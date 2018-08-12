@@ -14,8 +14,9 @@ import io.circe.parser.parse
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor}
+import scala.util.Try
 
-object AppServer extends HttpApp {
+object AppServer extends HttpApp with App {
 
   private val config: Config = ConfigFactory.load()
   private val host: String = config.getString("application.host")
@@ -41,50 +42,50 @@ object AppServer extends HttpApp {
 
   AppServer.startServer(host, port)
 
-
-  def mergeToStats(parsedPrice: Json, parsedImpression: Json): Json = {
-    val getResult = root.results.json
-    val prices = getResult.getOption(parsedPrice).getOrElse(Json.Null)
-    val impressions = getResult.getOption(parsedImpression).getOrElse(Json.Null)
-    (prices.asObject, impressions.asObject) match {
-      case (Some(prices), Some(impressions)) =>
-        fromFields(
-
-          prices.toList.zip(impressions.toList).map({ group =>
-            val (price, impression) = group
-            (
-              price._1,
-              obj(
-                ("impressions", impression._2),
-                ("price", price._2),
-                ("spent", fromDoubleOrNull(spent(price._2, impression._2)))
-              )
-            )
-          })
-          //        prices.toMap.zip(impressions.toMap)
-        )
-      case _ => Json.Null
-    }
-  }
-
   def getStats(ids: List[Int]): String = {
     val idTail = ids.map("id=" + _).mkString("&")
 
     def requestTemplate(destination: String) = HttpRequest(uri = Uri.from(
+      scheme = "http",
       host = outerServiceHost,
       port = outerServicePort,
       path = destination,
       queryString = Some(idTail)))
 
     val futureResult = for {
-      priceResponse <- Http().singleRequest(requestTemplate("prices"))
-      impressionResponse <- Http().singleRequest(requestTemplate("impression"))
+      priceResponse <- Http().singleRequest(requestTemplate("/prices"))
+      impressionResponse <- Http().singleRequest(requestTemplate("/impressions"))
       priceContent <- Unmarshal(priceResponse.entity).to[String]
       impressionContent <- Unmarshal(impressionResponse.entity).to[String]
-    } yield mergeToStats(parse(priceContent).getOrElse(Json.Null), parse(impressionContent).getOrElse(Json.Null))
+    } yield mergeToStats(
+      parse(priceContent).getOrElse(Json.Null),
+      parse(impressionContent).getOrElse(Json.Null))
+      .toString()
 
-    Await.result(futureResult.map(_.toString()), Duration(5, TimeUnit.SECONDS))
+    Try(Await.result(futureResult, Duration(5, TimeUnit.SECONDS)))
+      .getOrElse("Data unavailable")
   }
+
+  def mergeToStats(parsedPrice: Json, parsedImpression: Json): Json = {
+    val getResult = root.results.json
+    val prices = getResult.getOption(parsedPrice).getOrElse(Json.Null)
+    val impressions = getResult.getOption(parsedImpression).getOrElse(Json.Null)
+    (prices.asObject, impressions.asObject) match {
+      case (Some(prices), Some(impressions)) => fromFields(merge(prices.toMap, impressions.toMap))
+      case _ => fromString("Invalid data")
+    }
+  }
+
+  def merge(prices: Map[String, Json], impressions: Map[String, Json]) =
+    prices.map({ case (id, price) =>
+      impressions.get(id).map({ impr =>
+        (id, obj(
+          ("impressions", impr),
+          ("price", price),
+          ("spent", fromDoubleOrNull(spent(price, impr)))
+        ))
+      })
+    }).filter(_.isDefined).map(_.get)
 
   def spent(price: Json, impression: Json): Double = {
     val extractedPrice = price.asNumber.map(_.toDouble).getOrElse(0.0)
