@@ -5,13 +5,13 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
-import io.circe.{Json, JsonObject}
-import io.circe.Json.{fromDoubleOrNull, fromFields, fromString, obj}
+import io.circe.Json.{fromDoubleOrNull, fromFields, obj}
 import io.circe.optics.JsonPath.root
 import io.circe.parser.parse
+import io.circe.{Json, JsonObject}
 
-import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.util.Try
 
 object StatsService {
@@ -37,20 +37,19 @@ object StatsService {
     } yield mergeToStats(
       parse(priceContent).getOrElse(Json.Null),
       parse(impressionContent).getOrElse(Json.Null))
-      .toString()
 
     Try(Await.result(futureResult, Duration(5, TimeUnit.SECONDS)))
       .getOrElse("Data unavailable")
   }
 
-  def mergeToStats(parsedPrice: Json, parsedImpression: Json): Json = {
+  def mergeToStats(parsedPrice: Json, parsedImpression: Json): String = {
     val getResult = root.results.json
 
     def objectOrNone: Json => Option[JsonObject] = getResult.getOption(_).getOrElse(Json.Null).asObject
 
     (objectOrNone(parsedPrice), objectOrNone(parsedImpression)) match {
-      case (Some(prices), Some(impressions)) => fromFields(merge(prices.toMap, impressions.toMap))
-      case _ => fromString("Invalid data")
+      case (Some(prices), Some(impressions)) => fromFields(merge(prices.toMap, impressions.toMap)).toString()
+      case _ => "Invalid data"
     }
   }
 
