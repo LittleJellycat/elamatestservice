@@ -68,15 +68,16 @@ object AppServer extends HttpApp with App {
 
   def mergeToStats(parsedPrice: Json, parsedImpression: Json): Json = {
     val getResult = root.results.json
-    val prices = getResult.getOption(parsedPrice).getOrElse(Json.Null)
-    val impressions = getResult.getOption(parsedImpression).getOrElse(Json.Null)
-    (prices.asObject, impressions.asObject) match {
+
+    def objectOrNone = getResult.getOption(_).getOrElse(Json.Null).asObject
+
+    (objectOrNone(parsedPrice), objectOrNone(parsedImpression)) match {
       case (Some(prices), Some(impressions)) => fromFields(merge(prices.toMap, impressions.toMap))
       case _ => fromString("Invalid data")
     }
   }
 
-  def merge(prices: Map[String, Json], impressions: Map[String, Json]) =
+  def merge(prices: Map[String, Json], impressions: Map[String, Json]): Iterable[(String, Json)] =
     prices.map({ case (id, price) =>
       impressions.get(id).map({ impr =>
         (id, obj(
