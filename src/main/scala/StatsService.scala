@@ -1,18 +1,24 @@
 import java.util.concurrent.TimeUnit
 
+import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.http.scaladsl.unmarshalling.Unmarshal
-import io.circe.Json
+import akka.stream.ActorMaterializer
+import io.circe.{Json, JsonObject}
 import io.circe.Json.{fromDoubleOrNull, fromFields, fromString, obj}
 import io.circe.optics.JsonPath.root
 import io.circe.parser.parse
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.concurrent.duration.Duration
 import scala.util.Try
 
 object StatsService {
+  implicit val system: ActorSystem = ActorSystem("elama-test-service")
+  implicit val materializer: ActorMaterializer = ActorMaterializer()
+  implicit val executionContext: ExecutionContextExecutor = system.dispatcher
+
   def getStats(ids: List[Int]): String = {
     val idTail = ids.map("id=" + _).mkString("&")
 
@@ -40,7 +46,7 @@ object StatsService {
   def mergeToStats(parsedPrice: Json, parsedImpression: Json): Json = {
     val getResult = root.results.json
 
-    def objectOrNone = getResult.getOption(_).getOrElse(Json.Null).asObject
+    def objectOrNone: Json => Option[JsonObject] = getResult.getOption(_).getOrElse(Json.Null).asObject
 
     (objectOrNone(parsedPrice), objectOrNone(parsedImpression)) match {
       case (Some(prices), Some(impressions)) => fromFields(merge(prices.toMap, impressions.toMap))
