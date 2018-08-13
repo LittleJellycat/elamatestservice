@@ -5,12 +5,12 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
+import io.circe.Json
 import io.circe.Json.fromFields
 import io.circe.generic.auto._
 import io.circe.optics.JsonPath.root
 import io.circe.parser.parse
 import io.circe.syntax._
-import io.circe.{Json, JsonObject}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor}
@@ -29,13 +29,13 @@ object StatsService {
       impressionResponse <- Http().singleRequest(requestTemplate("/impressions", idTail))
       priceContent <- Unmarshal(priceResponse.entity).to[String]
       impressionContent <- Unmarshal(impressionResponse.entity).to[String]
-    } yield mergeToStats(parseOrNull(priceContent), parseOrNull(impressionContent))
+    } yield mergeToStats(parseToOption(priceContent), parseToOption(impressionContent))
 
     Try(Await.result(futureResult, Duration(5, TimeUnit.SECONDS)))
       .getOrElse("Data unavailable")
   }
 
-  private def parseOrNull(str: String) = parse(str).getOrElse(Json.Null)
+  private def parseToOption(str: String) = parse(str).toOption
 
   private def requestTemplate(destination: String, query: String) = HttpRequest(uri = Uri.from(
     scheme = "http",
@@ -44,16 +44,21 @@ object StatsService {
     path = destination,
     queryString = Some(query)))
 
-  def mergeToStats(parsedPrice: Json, parsedImpression: Json): String = {
-    val getResult = root.results.json
-
-    def objectOrNone: Json => Option[JsonObject] = getResult.getOption(_).getOrElse(Json.Null).asObject
-
+  def mergeToStats(parsedPrice: Option[Json], parsedImpression: Option[Json]): String = {
     (objectOrNone(parsedPrice), objectOrNone(parsedImpression)) match {
       case (Some(prices), Some(impressions)) => fromFields(merge(prices.toMap, impressions.toMap)).toString()
       case _ => "Invalid data"
     }
   }
+
+  private val getResult = root.results.json
+
+  private def objectOrNone(maybeJson: Option[Json]) = for {
+    json <- maybeJson
+    resultJson <- getResult.getOption(json)
+    asObject <- resultJson.asObject
+  } yield asObject
+
 
   def merge(prices: Map[String, Json], impressions: Map[String, Json]): Iterable[(String, Json)] =
     prices.map({ case (id, price) =>
@@ -65,4 +70,5 @@ object StatsService {
     }).filter(_.isDefined).map(_.get)
 
   case class Stats(impressions: Int, price: Double, spent: Double)
+
 }
