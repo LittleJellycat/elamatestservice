@@ -53,14 +53,14 @@ object StatsService {
   } yield asObject
 
 
-  def merge(prices: Map[String, Json], impressions: Map[String, Json]): Iterable[(String, Json)] =
-    prices.map({ case (id, price) =>
-      impressions.get(id).map({ impression =>
+  private def merge(prices: Map[String, Json], impressions: Map[String, Json]): Iterable[(String, Json)] =
+    prices.map { case (id, price) =>
+      impressions.get(id).map { impression =>
         val extractedPrice = price.asNumber.map(_.toDouble).getOrElse(0.0)
         val extractedImpression = impression.asNumber.flatMap(_.toInt).getOrElse(0)
         (id, Stats(extractedImpression, extractedPrice, extractedPrice * extractedImpression).asJson)
-      })
-    }).filter(_.isDefined).map(_.get)
+      }
+    }.filter(_.isDefined).map(_.get)
 
   case class Stats(impressions: Int, price: Double, spent: Double)
 
