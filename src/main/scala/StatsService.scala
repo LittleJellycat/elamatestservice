@@ -1,5 +1,3 @@
-import java.util.concurrent.TimeUnit
-
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, Uri}
@@ -12,27 +10,22 @@ import io.circe.optics.JsonPath.root
 import io.circe.parser.parse
 import io.circe.syntax._
 
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContextExecutor}
-import scala.util.Try
+import scala.concurrent.{ExecutionContextExecutor, Future}
 
 object StatsService {
   implicit val system: ActorSystem = ActorSystem("elama-test-service")
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-  def getStats(ids: List[Int]): String = {
+  def getStats(ids: List[Int]): Future[String] = {
     val idTail = ids.map("id=" + _).mkString("&")
 
-    val futureResult = for {
+    for {
       priceResponse <- Http().singleRequest(requestTemplate("/prices", idTail))
       impressionResponse <- Http().singleRequest(requestTemplate("/impressions", idTail))
       priceContent <- Unmarshal(priceResponse.entity).to[String]
       impressionContent <- Unmarshal(impressionResponse.entity).to[String]
     } yield mergeToStats(parseToOption(priceContent), parseToOption(impressionContent))
-
-    Try(Await.result(futureResult, Duration(5, TimeUnit.SECONDS)))
-      .getOrElse("Data unavailable")
   }
 
   private def parseToOption(str: String) = parse(str).toOption
