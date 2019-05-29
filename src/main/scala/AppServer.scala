@@ -10,10 +10,14 @@ object AppServer extends HttpApp with App {
         parameters('id.as[Int].*) { ids =>
           ids.toList match {
             case Nil => complete("{}")
-            case idList => onComplete(StatsService.getStats(idList)) {
-              case Success(result) => complete(result)
-              case Failure(exception) => complete(StatusCodes.InternalServerError -> exception.getMessage)
-            }
+            case idList =>
+              onComplete(StatsService.getStats(idList)) {
+                case Success(result) => complete(result)
+                case Failure(exception) =>
+                  complete(
+                    StatusCodes.InternalServerError -> exception.getMessage
+                  )
+              }
           }
         }
       }

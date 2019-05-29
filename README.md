@@ -1,4 +1,4 @@
-### Yet anothere test task
+### Yet another test task
 
 ### Now in Scala
 
